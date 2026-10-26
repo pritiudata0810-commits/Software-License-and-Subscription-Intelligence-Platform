@@ -1,16 +1,5 @@
 # Software License & Subscription Intelligence Platform (LicenseIQ)
 
-**Course:** Field Engineering Project (FEP)  
-**Department:** Computer Engineering  
-**Guide:** Mr. Ajit Chavan  
-**Team Members:**
-1. **Yamgar Shreyasi** (Person 1: User, Software & License Management, Auth & RBAC)
-2. **Shaikh Alfiya** (Person 2: Usage & Cost Analytics, Savings Estimation, Formulas)
-3. **Sonawane Shrawani** (Person 3: AI Intelligence, Explainable Recommendations, Health Score)
-4. **Jadhav Suraj** (Person 4: Renewal Management, Risk & Alerts, Approval Workflows)
-5. **Udata Priti** (Person 5: Executive Dashboard, Data Visualizations, PDF Reporting)
-
----
 
 ## 1. Project Overview
 **LicenseIQ** is a production-grade, centralized enterprise SaaS license governance and subscription intelligence platform. It brings together all 5 team modules into **one unified application** backed by a persistent PostgreSQL database (Neon), deterministic mathematical calculations, and explainable AI optimization rules.
