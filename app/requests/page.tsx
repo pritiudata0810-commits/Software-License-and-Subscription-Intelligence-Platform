@@ -201,9 +201,14 @@ export default function RequestsPage() {
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-1.5 text-[11px]">
                         {r.hasAvailableUnused ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold bg-[#D7EFEA] px-2 py-0.5 rounded-lg border border-[#A8DDD5]">
                             <Sparkles className="w-3 h-3 text-emerald-600" />
-                            {r.availableUnusedSeats} Unused Seats in Pool
+                            {r.availableUnusedSeats} Unassigned Seats
+                          </span>
+                        ) : r.preCheck?.type === 'IDLE_SEAT_RECLAIMABLE' ? (
+                          <span className="inline-flex items-center gap-1 text-rose-700 font-bold bg-[#FDDCE5] px-2 py-0.5 rounded-lg border border-[#F7B8C8]" title={r.intelligenceRecommendation}>
+                            <RefreshCw className="w-3 h-3 text-rose-600" />
+                            {r.preCheck.idleSeatsCount} Reclaimable Seat{r.preCheck.idleSeatsCount > 1 ? 's' : ''} (&gt;60d)
                           </span>
                         ) : (
                           <span className="text-slate-400 font-medium">0 Available (Requires Buy)</span>
