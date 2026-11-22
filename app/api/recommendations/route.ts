@@ -45,11 +45,12 @@ export async function POST(req: NextRequest) {
 
     let createdCount = 0;
     for (const rec of evaluated) {
-      // Check if same type for same software is already active
+      // Check if same type and title for same software is already active
       const exists = await prisma.recommendation.findFirst({
         where: {
           softwareId: rec.softwareId,
           type: rec.type,
+          title: rec.title,
           status: { in: [RecommendationStatus.NEW, RecommendationStatus.REVIEWED] },
         },
       });

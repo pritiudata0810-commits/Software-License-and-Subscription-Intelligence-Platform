@@ -32,6 +32,40 @@ export interface DepartmentSpend {
   budgetUtilizationRate: number;
 }
 
+export type SeatTier = 'OPTIMAL' | 'UNDERUTILIZED' | 'IDLE_60D' | 'UNASSIGNED';
+
+export interface SeatClassification {
+  seatId: string;
+  userId?: string;
+  userName: string;
+  userEmail: string;
+  departmentName: string;
+  softwareId: string;
+  softwareName: string;
+  licenseId: string;
+  costPerLicense: number;
+  billingFrequency: string;
+  lastActiveDate: string | null;
+  daysInactive: number;
+  hoursUsed: number;
+  loginCount: number;
+  tier: SeatTier;
+  reclaimableCostMonthly: number;
+  reclaimableCostAnnual: number;
+}
+
+export interface SeatClassificationSummary {
+  optimalSeats: number;
+  underutilizedSeats: number;
+  idleSeats60d: number;
+  unassignedSeats: number;
+  totalSeats: number;
+  idle60dMonthlyWaste: number;
+  idle60dAnnualWaste: number;
+  unassignedMonthlyWaste: number;
+  unassignedAnnualWaste: number;
+}
+
 export interface PlatformAnalyticsSummary {
   totalSoftware: number;
   totalVendors: number;
@@ -52,6 +86,9 @@ export interface PlatformAnalyticsSummary {
   underutilizedCount: number;
   softwareBreakdown: SoftwareUtilization[];
   departmentBreakdown: DepartmentSpend[];
+  // Phase 2: 4-Tier Seat Classification
+  seatClassificationSummary: SeatClassificationSummary;
+  seatClassifications: SeatClassification[];
 }
 
 export function classifyUtilization(rate: number): 'EXCELLENT' | 'GOOD' | 'MODERATE' | 'LOW' | 'CRITICAL' {
@@ -63,7 +100,7 @@ export function classifyUtilization(rate: number): 'EXCELLENT' | 'GOOD' | 'MODER
 }
 
 export async function calculatePlatformAnalytics(): Promise<PlatformAnalyticsSummary> {
-  const [softwareList, vendorsCount, departments] = await Promise.all([
+  const [softwareList, vendorsCount, departments, usageRecords] = await Promise.all([
     prisma.software.findMany({
       include: {
         vendor: true,
@@ -86,7 +123,21 @@ export async function calculatePlatformAnalytics(): Promise<PlatformAnalyticsSum
         },
       },
     }),
+    prisma.usageRecord.findMany({
+      orderBy: { lastActiveDate: 'desc' },
+    }),
   ]);
+
+  const latestUsageMap = new Map<string, typeof usageRecords[0]>();
+  for (const u of usageRecords) {
+    const key = `${u.userId}:${u.softwareId}`;
+    if (!latestUsageMap.has(key)) {
+      latestUsageMap.set(key, u);
+    }
+  }
+
+  const now = new Date();
+  const seatClassifications: SeatClassification[] = [];
 
   let totalLicenses = 0;
   let totalActiveLicenses = 0;
@@ -132,6 +183,97 @@ export async function calculatePlatformAnalytics(): Promise<PlatformAnalyticsSum
             initials,
           });
         }
+
+        // 4-Tier Seat Classification for assigned seat
+        const usage = latestUsageMap.get(`${assign.userId}:${sw.id}`);
+        let daysInactive = 999;
+        let lastActiveStr: string | null = null;
+        let hours = 0;
+        let logins = 0;
+
+        if (usage && usage.lastActiveDate) {
+          const lastActiveTime = new Date(usage.lastActiveDate).getTime();
+          daysInactive = Math.max(0, Math.floor((now.getTime() - lastActiveTime) / (1000 * 60 * 60 * 24)));
+          lastActiveStr = usage.lastActiveDate.toISOString();
+          hours = usage.hoursUsed || 0;
+          logins = usage.loginCount || 0;
+        } else if (assign.assignedDate) {
+          daysInactive = Math.max(0, Math.floor((now.getTime() - new Date(assign.assignedDate).getTime()) / (1000 * 60 * 60 * 24)));
+        }
+
+        let tier: SeatTier = 'OPTIMAL';
+        if (daysInactive > 60 || (!usage && daysInactive > 30)) {
+          tier = 'IDLE_60D';
+        } else if (daysInactive > 30 || hours < 10 || logins < 5) {
+          tier = 'UNDERUTILIZED';
+        } else {
+          tier = 'OPTIMAL';
+        }
+
+        let reclaimableMonthly = 0;
+        let reclaimableAnnual = 0;
+        if (tier === 'IDLE_60D') {
+          if (freq === 'ANNUAL') {
+            reclaimableAnnual = lic.costPerLicense;
+            reclaimableMonthly = lic.costPerLicense / 12;
+          } else if (freq === 'MONTHLY') {
+            reclaimableMonthly = lic.costPerLicense;
+            reclaimableAnnual = lic.costPerLicense * 12;
+          }
+        }
+
+        seatClassifications.push({
+          seatId: assign.id,
+          userId: assign.userId,
+          userName: assign.user?.name || 'Assigned User',
+          userEmail: assign.user?.email || 'N/A',
+          departmentName: assign.department?.name || 'General',
+          softwareId: sw.id,
+          softwareName: sw.name,
+          licenseId: lic.id,
+          costPerLicense: lic.costPerLicense,
+          billingFrequency: freq,
+          lastActiveDate: lastActiveStr,
+          daysInactive,
+          hoursUsed: Number(hours.toFixed(1)),
+          loginCount: logins,
+          tier,
+          reclaimableCostMonthly: Math.round(reclaimableMonthly),
+          reclaimableCostAnnual: Math.round(reclaimableAnnual),
+        });
+      }
+
+      // Add unassigned seats for this license pool
+      const unassignedPoolCount = Math.max(0, licTotal - licActive);
+      let licUnassignedMonthly = 0;
+      let licUnassignedAnnual = 0;
+      if (freq === 'ANNUAL') {
+        licUnassignedAnnual = lic.costPerLicense;
+        licUnassignedMonthly = lic.costPerLicense / 12;
+      } else if (freq === 'MONTHLY') {
+        licUnassignedMonthly = lic.costPerLicense;
+        licUnassignedAnnual = lic.costPerLicense * 12;
+      }
+
+      for (let s = 1; s <= unassignedPoolCount; s++) {
+        seatClassifications.push({
+          seatId: `${lic.id}-unassigned-${s}`,
+          userName: `Unassigned Seat #${s}`,
+          userEmail: `pool@${sw.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.license`,
+          departmentName: 'Unallocated Pool',
+          softwareId: sw.id,
+          softwareName: sw.name,
+          licenseId: lic.id,
+          costPerLicense: lic.costPerLicense,
+          billingFrequency: freq,
+          lastActiveDate: null,
+          daysInactive: -1,
+          hoursUsed: 0,
+          loginCount: 0,
+          tier: 'UNASSIGNED',
+          reclaimableCostMonthly: Math.round(licUnassignedMonthly),
+          reclaimableCostAnnual: Math.round(licUnassignedAnnual),
+        });
       }
 
       swTotal += licTotal;
@@ -257,6 +399,50 @@ export async function calculatePlatformAnalytics(): Promise<PlatformAnalyticsSum
     };
   });
 
+  const optimalSeats = seatClassifications.filter(s => s.tier === 'OPTIMAL').length;
+  const underutilizedSeats = seatClassifications.filter(s => s.tier === 'UNDERUTILIZED').length;
+  const idleSeats60d = seatClassifications.filter(s => s.tier === 'IDLE_60D').length;
+  const unassignedSeats = seatClassifications.filter(s => s.tier === 'UNASSIGNED').length;
+
+  const idle60dMonthlyWaste = seatClassifications
+    .filter(s => s.tier === 'IDLE_60D')
+    .reduce((sum, s) => sum + s.reclaimableCostMonthly, 0);
+  const idle60dAnnualWaste = seatClassifications
+    .filter(s => s.tier === 'IDLE_60D')
+    .reduce((sum, s) => sum + s.reclaimableCostAnnual, 0);
+
+  const unassignedMonthlyWaste = seatClassifications
+    .filter(s => s.tier === 'UNASSIGNED')
+    .reduce((sum, s) => sum + s.reclaimableCostMonthly, 0);
+  const unassignedAnnualWaste = seatClassifications
+    .filter(s => s.tier === 'UNASSIGNED')
+    .reduce((sum, s) => sum + s.reclaimableCostAnnual, 0);
+
+  const seatClassificationSummary: SeatClassificationSummary = {
+    optimalSeats,
+    underutilizedSeats,
+    idleSeats60d,
+    unassignedSeats,
+    totalSeats: seatClassifications.length,
+    idle60dMonthlyWaste: Math.round(idle60dMonthlyWaste),
+    idle60dAnnualWaste: Math.round(idle60dAnnualWaste),
+    unassignedMonthlyWaste: Math.round(unassignedMonthlyWaste),
+    unassignedAnnualWaste: Math.round(unassignedAnnualWaste),
+  };
+
+  const tierPriority: Record<SeatTier, number> = {
+    IDLE_60D: 1,
+    UNDERUTILIZED: 2,
+    UNASSIGNED: 3,
+    OPTIMAL: 4,
+  };
+  seatClassifications.sort((a, b) => {
+    const pA = tierPriority[a.tier] || 99;
+    const pB = tierPriority[b.tier] || 99;
+    if (pA !== pB) return pA - pB;
+    return b.daysInactive - a.daysInactive;
+  });
+
   return {
     totalSoftware: softwareList.length,
     totalVendors: vendorsCount,
@@ -276,5 +462,7 @@ export async function calculatePlatformAnalytics(): Promise<PlatformAnalyticsSum
     underutilizedCount,
     softwareBreakdown,
     departmentBreakdown,
+    seatClassificationSummary,
+    seatClassifications,
   };
 }

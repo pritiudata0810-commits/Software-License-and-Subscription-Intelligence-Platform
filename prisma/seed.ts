@@ -428,12 +428,103 @@ async function main() {
     const countToAssign = Math.min(item.license.assignedCount, employeeUserList.length);
     for (let i = 0; i < countToAssign; i++) {
       const u = employeeUserList[i % employeeUserList.length];
+
+      // Derive realistic 4-tier activity history
+      let daysAgo = (i % 20) + 2;
+      let hours = 28.5 + (i * 3.5);
+      let logins = 16 + (i * 2);
+      let uStatus: UtilizationStatus = UtilizationStatus.HIGH;
+
+      if (item.name === 'Autodesk AEC Collection') {
+        if (i === 1) {
+          daysAgo = 92;
+          hours = 2.0;
+          logins = 1;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 3) {
+          daysAgo = 45;
+          hours = 6.5;
+          logins = 4;
+          uStatus = UtilizationStatus.LOW;
+        } else {
+          daysAgo = 4 + i;
+          hours = 38.0;
+          logins = 19;
+          uStatus = UtilizationStatus.HIGH;
+        }
+      } else if (item.name === 'Adobe Creative Cloud All Apps') {
+        if (i === 4) {
+          daysAgo = 75;
+          hours = 1.0;
+          logins = 1;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 7) {
+          daysAgo = 68;
+          hours = 0.5;
+          logins = 1;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 10) {
+          daysAgo = 48;
+          hours = 5.0;
+          logins = 3;
+          uStatus = UtilizationStatus.LOW;
+        } else if (i === 12) {
+          daysAgo = 35;
+          hours = 8.0;
+          logins = 4;
+          uStatus = UtilizationStatus.LOW;
+        }
+      } else if (item.name === 'JetBrains All Products Pack') {
+        if (i === 2) {
+          daysAgo = 82;
+          hours = 3.0;
+          logins = 2;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 5) {
+          daysAgo = 71;
+          hours = 1.5;
+          logins = 1;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 8) {
+          daysAgo = 38;
+          hours = 6.0;
+          logins = 3;
+          uStatus = UtilizationStatus.LOW;
+        }
+      } else if (item.name === 'Figma Enterprise') {
+        if (i === 3) {
+          daysAgo = 70;
+          hours = 2.0;
+          logins = 2;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i === 6) {
+          daysAgo = 40;
+          hours = 7.0;
+          logins = 4;
+          uStatus = UtilizationStatus.LOW;
+        }
+      } else {
+        if (i % 9 === 0) {
+          daysAgo = 66;
+          hours = 1.0;
+          logins = 1;
+          uStatus = UtilizationStatus.INACTIVE;
+        } else if (i % 5 === 0) {
+          daysAgo = 36;
+          hours = 7.0;
+          logins = 3;
+          uStatus = UtilizationStatus.LOW;
+        }
+      }
+
+      const assignedDate = new Date(today.getTime() - Math.max(daysAgo + 20, 120) * 24 * 60 * 60 * 1000);
+
       await prisma.licenseAssignment.create({
         data: {
           licenseId: lic.id,
           userId: u.id,
           departmentId: u.departmentId,
-          assignedDate: past30Days,
+          assignedDate,
           status: AssignmentStatus.ACTIVE,
           notes: `Automated provisioning for ${u.name}`,
         },
@@ -445,10 +536,10 @@ async function main() {
           userId: u.id,
           softwareId: sw.id,
           licenseId: lic.id,
-          lastActiveDate: new Date(today.getTime() - (i % 7) * 24 * 60 * 60 * 1000),
-          loginCount: 15 + (i * 3),
-          hoursUsed: 25.5 + (i * 4.2),
-          utilizationStatus: i % 4 === 0 ? UtilizationStatus.LOW : (i % 3 === 0 ? UtilizationStatus.HIGH : UtilizationStatus.MODERATE),
+          lastActiveDate: new Date(today.getTime() - daysAgo * 24 * 60 * 60 * 1000),
+          loginCount: logins,
+          hoursUsed: hours,
+          utilizationStatus: uStatus,
         },
       });
     }

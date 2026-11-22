@@ -18,6 +18,11 @@ import {
   Calendar,
   ArrowUpRight,
   Activity,
+  Clock,
+  Search,
+  UserCheck,
+  UserX,
+  UserMinus
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -41,6 +46,8 @@ export default function UsageAnalyticsPage() {
   const [consumptionLoading, setConsumptionLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [threshold, setThreshold] = useState(70);
+  const [seatFilter, setSeatFilter] = useState<'ALL' | 'OPTIMAL' | 'UNDERUTILIZED' | 'IDLE_60D' | 'UNASSIGNED'>('ALL');
+  const [seatSearch, setSeatSearch] = useState('');
 
   const fetchAnalytics = async () => {
     setLoading(true);
@@ -107,6 +114,34 @@ export default function UsageAnalyticsPage() {
   ].filter((d) => d.value > 0);
 
   const underutilizedAtThreshold = softwareBreakdown.filter((s: any) => s.utilizationRate < threshold);
+
+  const formatINR = (val: number) => `₹${Math.round(val || 0).toLocaleString('en-IN')}`;
+
+  const seatSummary = analytics?.seatClassificationSummary || {
+    optimalSeats: 0,
+    underutilizedSeats: 0,
+    idleSeats60d: 0,
+    unassignedSeats: 0,
+    totalSeats: 0,
+    idle60dMonthlyWaste: 0,
+    idle60dAnnualWaste: 0,
+    unassignedMonthlyWaste: 0,
+    unassignedAnnualWaste: 0,
+  };
+
+  const seatClassifications: any[] = analytics?.seatClassifications || [];
+
+  const filteredSeats = seatClassifications.filter((seat: any) => {
+    if (seatFilter !== 'ALL' && seat.tier !== seatFilter) return false;
+    if (!seatSearch.trim()) return true;
+    const q = seatSearch.toLowerCase();
+    return (
+      seat.userName?.toLowerCase().includes(q) ||
+      seat.userEmail?.toLowerCase().includes(q) ||
+      seat.softwareName?.toLowerCase().includes(q) ||
+      seat.departmentName?.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="space-y-6 pb-12">
@@ -319,6 +354,397 @@ export default function UsageAnalyticsPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* SECTION: 4-TIER SEAT CLASSIFICATION & INACTIVITY TRACKING */}
+      {/* ============================================================== */}
+      <div id="seat-classification" className="space-y-6 pt-6 border-t border-slate-200/60">
+        
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-slate-900 text-white text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                <span>Seat-Level Intelligence</span>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider">
+                60-Day Inactivity Tracking
+              </span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight mt-1.5 flex items-center gap-2">
+              <span>4-Tier Seat Classification &amp; Inactivity Tracking</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Individual employee seat diagnostics grounded in real usage records. Flags active licenses dormant for &gt;60 days for immediate cost reclamation.
+            </p>
+          </div>
+        </div>
+
+        {/* 4-Tier Summary Cards (Pastel Themed) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Card 1: Optimal (Mint #D7EFEA) */}
+          <div className="p-5 rounded-[28px] bg-[#D7EFEA] border border-teal-100/50 shadow-xs flex flex-col justify-between min-h-[150px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5 text-slate-900" />
+                <span>Optimal Seats</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-teal-900 shadow-2xs">
+                Active ≤30d
+              </span>
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="text-2xl font-black text-slate-900 tracking-tight">
+                  {seatSummary.optimalSeats}
+                </span>
+                <span className="text-xs font-bold text-teal-800">
+                  {seatSummary.totalSeats > 0 ? Math.round((seatSummary.optimalSeats / seatSummary.totalSeats) * 100) : 0}% of total
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+                Healthy session engagement (≥10h / regular logins)
+              </p>
+            </div>
+          </div>
+
+          {/* Card 2: Underutilized (Lemon #FEF1C9) */}
+          <div className="p-5 rounded-[28px] bg-[#FEF1C9] border border-amber-100/50 shadow-xs flex flex-col justify-between min-h-[150px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-slate-900" />
+                <span>Underutilized</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-amber-900 shadow-2xs">
+                31–60d / Low Hrs
+              </span>
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="text-2xl font-black text-slate-900 tracking-tight">
+                  {seatSummary.underutilizedSeats}
+                </span>
+                <span className="text-xs font-bold text-amber-800">
+                  {seatSummary.totalSeats > 0 ? Math.round((seatSummary.underutilizedSeats / seatSummary.totalSeats) * 100) : 0}% of total
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+                Infrequent usage or low engagement (&lt;10h)
+              </p>
+            </div>
+          </div>
+
+          {/* Card 3: Idle >60d (Rose #FDDCE5) */}
+          <div className="p-5 rounded-[28px] bg-[#FDDCE5] border border-rose-100/50 shadow-xs flex flex-col justify-between min-h-[150px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <UserX className="w-3.5 h-3.5 text-rose-800" />
+                <span>Idle (&gt;60d Dormant)</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-900 border border-rose-500/30">
+                Action Required
+              </span>
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="text-2xl font-black text-rose-950 tracking-tight">
+                  {seatSummary.idleSeats60d}
+                </span>
+                <span className="text-xs font-bold text-rose-800">
+                  {formatINR(seatSummary.idle60dMonthlyWaste)}/mo
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-800 font-medium mt-1 truncate">
+                Zero activity in &gt;60d • Reclaim ₹{Math.round(seatSummary.idle60dAnnualWaste).toLocaleString('en-IN')}/yr
+              </p>
+            </div>
+          </div>
+
+          {/* Card 4: Unassigned Pool Headroom (Lavender #E3DCFD) */}
+          <div className="p-5 rounded-[28px] bg-[#E3DCFD] border border-purple-100/50 shadow-xs flex flex-col justify-between min-h-[150px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <UserMinus className="w-3.5 h-3.5 text-slate-900" />
+                <span>Unassigned Seats</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-purple-900 shadow-2xs">
+                Pool Headroom
+              </span>
+            </div>
+            <div>
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="text-2xl font-black text-slate-900 tracking-tight">
+                  {seatSummary.unassignedSeats}
+                </span>
+                <span className="text-xs font-bold text-purple-800">
+                  {formatINR(seatSummary.unassignedMonthlyWaste)}/mo
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+                Purchased pool capacity ready for instant assignment
+              </p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Interactive Filterable Seat-Level Table */}
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+          
+          {/* Controls Bar: Search & Tier Filter Buttons */}
+          <div className="p-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-bold text-slate-900">Seat-Level Activity &amp; Inactivity Audit</h3>
+              <p className="text-[11px] text-slate-500">Showing {filteredSeats.length} of {seatClassifications.length} total seats</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              {/* Search Box */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search employee, software, or dept..."
+                  value={seatSearch}
+                  onChange={(e) => setSeatSearch(e.target.value)}
+                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-900 w-full sm:w-60"
+                />
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setSeatFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    seatFilter === 'ALL'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({seatClassifications.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSeatFilter('IDLE_60D')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                    seatFilter === 'IDLE_60D'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'text-rose-700 hover:text-rose-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${seatFilter === 'IDLE_60D' ? 'bg-white' : 'bg-rose-500'}`} />
+                  Idle &gt;60d ({seatSummary.idleSeats60d})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSeatFilter('UNDERUTILIZED')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                    seatFilter === 'UNDERUTILIZED'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'text-amber-700 hover:text-amber-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${seatFilter === 'UNDERUTILIZED' ? 'bg-white' : 'bg-amber-500'}`} />
+                  Underutilized ({seatSummary.underutilizedSeats})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSeatFilter('OPTIMAL')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                    seatFilter === 'OPTIMAL'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-emerald-700 hover:text-emerald-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${seatFilter === 'OPTIMAL' ? 'bg-white' : 'bg-emerald-500'}`} />
+                  Optimal ({seatSummary.optimalSeats})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSeatFilter('UNASSIGNED')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 ${
+                    seatFilter === 'UNASSIGNED'
+                      ? 'bg-purple-600 text-white shadow-2xs'
+                      : 'text-purple-700 hover:text-purple-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${seatFilter === 'UNASSIGNED' ? 'bg-white' : 'bg-purple-500'}`} />
+                  Unassigned ({seatSummary.unassignedSeats})
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Seat Table */}
+          <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-100 sticky top-0 z-10 shadow-2xs">
+                <tr>
+                  <th className="py-3 px-4">Employee / Seat</th>
+                  <th className="py-3 px-4">Department</th>
+                  <th className="py-3 px-4">Software &amp; License</th>
+                  <th className="py-3 px-4">Last Active</th>
+                  <th className="py-3 px-4">Days Inactive</th>
+                  <th className="py-3 px-4">Usage Engagement</th>
+                  <th className="py-3 px-4">4-Tier Status</th>
+                  <th className="py-3 px-4">Reclaimable Waste</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {filteredSeats.length > 0 ? (
+                  filteredSeats.map((seat: any) => {
+                    const isIdle60 = seat.tier === 'IDLE_60D';
+                    const isUnder = seat.tier === 'UNDERUTILIZED';
+                    const isOpt = seat.tier === 'OPTIMAL';
+                    const isUnassigned = seat.tier === 'UNASSIGNED';
+
+                    return (
+                      <tr
+                        key={seat.seatId}
+                        className={`transition ${
+                          isIdle60
+                            ? 'bg-rose-50/40 hover:bg-rose-50/70'
+                            : 'hover:bg-slate-50/70'
+                        }`}
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                isIdle60
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : isUnder
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : isUnassigned
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {isUnassigned
+                                ? 'P'
+                                : (seat.userName
+                                    .split(' ')
+                                    .map((n: string) => n[0])
+                                    .join('')
+                                    .slice(0, 2)
+                                    .toUpperCase() || 'U')}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 truncate">{seat.userName}</div>
+                              <div className="text-[11px] text-slate-400 truncate">{seat.userEmail}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[10px]">
+                            {seat.departmentName}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900 truncate">{seat.softwareName}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {formatINR(seat.costPerLicense)} / {seat.billingFrequency?.toLowerCase() || 'mo'}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-slate-600">
+                          {seat.lastActiveDate ? (
+                            new Date(seat.lastActiveDate).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })
+                          ) : (
+                            <span className="text-slate-400 italic">No activity recorded</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {seat.daysInactive < 0 ? (
+                            <span className="text-slate-400 font-medium">Unassigned</span>
+                          ) : isIdle60 ? (
+                            <span className="inline-flex items-center gap-1 font-bold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-full text-[10px]">
+                              <AlertTriangle className="w-3 h-3 text-rose-600" />
+                              {seat.daysInactive}d inactive (&gt;60d)
+                            </span>
+                          ) : isUnder ? (
+                            <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full text-[10px]">
+                              {seat.daysInactive}d inactive
+                            </span>
+                          ) : (
+                            <span className="font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px]">
+                              {seat.daysInactive}d inactive
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {isUnassigned ? (
+                            <span className="text-slate-400">—</span>
+                          ) : (
+                            <div>
+                              <span className="font-bold text-slate-900">{seat.hoursUsed} hrs</span>
+                              <span className="text-[11px] text-slate-400 ml-1">({seat.loginCount} logins)</span>
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                              isOpt
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                : isUnder
+                                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                : isIdle60
+                                ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                                : 'bg-purple-100 text-purple-800 border-purple-200'
+                            }`}
+                          >
+                            {seat.tier === 'IDLE_60D'
+                              ? 'Idle (>60d)'
+                              : seat.tier === 'UNDERUTILIZED'
+                              ? 'Underutilized'
+                              : seat.tier === 'OPTIMAL'
+                              ? 'Optimal'
+                              : 'Unassigned'}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-4 font-bold">
+                          {isIdle60 ? (
+                            <span className="text-rose-700">
+                              {formatINR(seat.reclaimableCostMonthly)}/mo
+                            </span>
+                          ) : isUnassigned ? (
+                            <span className="text-purple-700 font-semibold">
+                              {formatINR(seat.reclaimableCostMonthly)}/mo
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-slate-400 text-xs">
+                      No seats match the selected filter or search query.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
       {/* ============================================================== */}

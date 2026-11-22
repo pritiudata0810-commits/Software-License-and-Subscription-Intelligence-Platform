@@ -107,13 +107,16 @@ export async function calculateLicenseHealthScore(): Promise<HealthScoreBreakdow
 }
 
 export async function evaluateAndGenerateRecommendations() {
-  const [softwareList, pendingRequests, renewals] = await Promise.all([
+  const [softwareList, pendingRequests, renewals, usageRecords] = await Promise.all([
     prisma.software.findMany({
       include: {
         vendor: true,
         licenses: {
           include: {
-            assignments: { where: { status: 'ACTIVE' } },
+            assignments: { 
+              where: { status: 'ACTIVE' },
+              include: { user: true, department: true },
+            },
           },
         },
       },
@@ -125,12 +128,23 @@ export async function evaluateAndGenerateRecommendations() {
     prisma.renewal.findMany({
       include: { software: { include: { licenses: { include: { assignments: { where: { status: 'ACTIVE' } } } } } } },
     }),
+    prisma.usageRecord.findMany({
+      orderBy: { lastActiveDate: 'desc' },
+    }),
   ]);
+
+  const latestUsageMap = new Map<string, typeof usageRecords[0]>();
+  for (const u of usageRecords) {
+    const key = `${u.userId}:${u.softwareId}`;
+    if (!latestUsageMap.has(key)) {
+      latestUsageMap.set(key, u);
+    }
+  }
 
   const newRecommendations: any[] = [];
   const today = new Date();
 
-  // RULE 1: Unused licenses & low utilization (< 70%)
+  // RULE 1: Unused licenses & Dormant (>60d inactive) seats
   for (const sw of softwareList) {
     for (const lic of sw.licenses) {
       const activeCount = lic.assignments.length;
@@ -148,6 +162,7 @@ export async function evaluateAndGenerateRecommendations() {
         licAnnualSaving = licMonthlySaving * 12;
       }
 
+      // 1A: Unassigned licenses in pool (< 70% utilization)
       if (utilRate < 70 && unusedCount > 0) {
         newRecommendations.push({
           softwareId: sw.id,
@@ -167,6 +182,85 @@ export async function evaluateAndGenerateRecommendations() {
           estimatedMonthlySavings: Math.round(licMonthlySaving),
           estimatedAnnualSavings: Math.round(licAnnualSaving),
           suggestedAction: `Review ${unusedCount} idle seats to reassign to incoming personnel or negotiate reduced seat count on next invoice.`,
+          status: RecommendationStatus.NEW,
+        });
+      }
+
+      // 1B: Assigned seats inactive for >60 days (Dormant Seat Reclamation)
+      const dormantAssignments: {
+        userId: string;
+        userName: string;
+        userEmail: string;
+        departmentName: string;
+        daysInactive: number;
+        lastActiveDate: string | null;
+        hoursUsed: number;
+      }[] = [];
+
+      for (const assign of lic.assignments) {
+        const usage = latestUsageMap.get(`${assign.userId}:${sw.id}`);
+        let daysInactive = 999;
+        let lastActiveStr: string | null = null;
+        let hours = 0;
+
+        if (usage && usage.lastActiveDate) {
+          const lastActiveTime = new Date(usage.lastActiveDate).getTime();
+          daysInactive = Math.max(0, Math.floor((today.getTime() - lastActiveTime) / (1000 * 60 * 60 * 24)));
+          lastActiveStr = usage.lastActiveDate.toISOString();
+          hours = usage.hoursUsed || 0;
+        } else if (assign.assignedDate) {
+          daysInactive = Math.max(0, Math.floor((today.getTime() - new Date(assign.assignedDate).getTime()) / (1000 * 60 * 60 * 24)));
+        }
+
+        if (daysInactive > 60) {
+          dormantAssignments.push({
+            userId: assign.userId,
+            userName: assign.user?.name || 'Assigned User',
+            userEmail: assign.user?.email || 'N/A',
+            departmentName: assign.department?.name || 'General',
+            daysInactive,
+            lastActiveDate: lastActiveStr,
+            hoursUsed: hours,
+          });
+        }
+      }
+
+      if (dormantAssignments.length > 0) {
+        const dormantCount = dormantAssignments.length;
+        let dormantAnnualSaving = 0;
+        let dormantMonthlySaving = 0;
+        if (freq === 'ANNUAL') {
+          dormantAnnualSaving = dormantCount * lic.costPerLicense;
+          dormantMonthlySaving = dormantAnnualSaving / 12;
+        } else if (freq === 'MONTHLY') {
+          dormantMonthlySaving = dormantCount * lic.costPerLicense;
+          dormantAnnualSaving = dormantMonthlySaving * 12;
+        }
+
+        const employeeListStr = dormantAssignments
+          .slice(0, 3)
+          .map((d) => `${d.userName} (${d.daysInactive}d inactive)`)
+          .join(', ');
+        const extraDormantCount = dormantCount > 3 ? `, +${dormantCount - 3} more` : '';
+
+        newRecommendations.push({
+          softwareId: sw.id,
+          licenseId: lic.id,
+          type: RecommendationType.REALLOCATE_UNUSED,
+          severity: RecommendationSeverity.CRITICAL,
+          title: `Reclaim ${dormantCount} Idle Seat${dormantCount > 1 ? 's' : ''} (>60d Inactive) on ${sw.name}`,
+          reason: `${dormantCount} assigned license seat${dormantCount > 1 ? 's have' : ' has'} been inactive for >60 days: ${employeeListStr}${extraDormantCount}.`,
+          supportingMetrics: {
+            dormantSeatsCount: dormantCount,
+            dormantEmployees: dormantAssignments,
+            totalLicenses: lic.totalQuantity,
+            activeLicenses: activeCount,
+            costPerLicense: lic.costPerLicense,
+            billingFrequency: freq,
+          },
+          estimatedMonthlySavings: Math.round(dormantMonthlySaving),
+          estimatedAnnualSavings: Math.round(dormantAnnualSaving),
+          suggestedAction: `Revoke dormant assignment(s) for inactive employee(s) to immediately recover ₹${Math.round(dormantMonthlySaving).toLocaleString('en-IN')}/mo (₹${Math.round(dormantAnnualSaving).toLocaleString('en-IN')}/yr) or reassign to pending requests.`,
           status: RecommendationStatus.NEW,
         });
       }
