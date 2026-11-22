@@ -18,7 +18,9 @@ import {
   FileDown,
   Cpu,
   Coins,
-  Activity
+  Activity,
+  Clock,
+  ShieldCheck
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -46,6 +48,8 @@ export default function DashboardPage() {
   const [tokenConsumption, setTokenConsumption] = useState<any>(null);
   const [financialView, setFinancialView] = useState<'monthly' | 'yearly'>('monthly');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [health, setHealth] = useState<any>(null);
+  const [renewalsMeta, setRenewalsMeta] = useState<any>(null);
 
   // Calendar month state
   const [currentDate, setCurrentDate] = useState(new Date(2026, 9, 1)); // October 2026
@@ -53,13 +57,14 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setIsRefreshing(true);
     try {
-      const [anRes, alRes, rnRes, rcRes, yrRes, tkRes] = await Promise.all([
+      const [anRes, alRes, rnRes, rcRes, yrRes, tkRes, hlRes] = await Promise.all([
         fetch('/api/analytics'),
         fetch('/api/alerts'),
         fetch('/api/renewals'),
         fetch('/api/recommendations'),
         fetch('/api/analytics/yearly-recovery'),
         fetch('/api/analytics/consumption'),
+        fetch('/api/analytics/health'),
       ]);
 
       if (anRes.ok) {
@@ -72,7 +77,10 @@ export default function DashboardPage() {
       }
       if (rnRes.ok) {
         const d = await rnRes.json();
-        if (d.success) setRenewals(d.renewals || []);
+        if (d.success) {
+          setRenewals(d.renewals || []);
+          setRenewalsMeta(d);
+        }
       }
       if (rcRes.ok) {
         const d = await rcRes.json();
@@ -85,6 +93,10 @@ export default function DashboardPage() {
       if (tkRes.ok) {
         const d = await tkRes.json();
         if (d.success) setTokenConsumption(d);
+      }
+      if (hlRes.ok) {
+        const d = await hlRes.json();
+        if (d.success) setHealth(d.health);
       }
     } catch (err) {
       console.error('Error loading dashboard data:', err);
@@ -159,8 +171,262 @@ export default function DashboardPage() {
 
   const activeRenewalDays = renewalDatesInMonth.length > 0 ? renewalDatesInMonth : [16, 17, 24];
 
+  // Executive KPI Derived Metrics
+  const totalMonthlySpend = analytics?.monthlyExpenditure ?? analytics?.totalMonthlyCost ?? 0;
+  const totalAnnualSpend = analytics?.annualExpenditure ?? analytics?.totalAnnualCost ?? (totalMonthlySpend * 12);
+  const potentialMonthlySavings = analytics?.potentialMonthlySavings ?? analytics?.unusedMonthlyCost ?? 0;
+  const potentialAnnualSavings = analytics?.potentialAnnualSavings ?? analytics?.unusedAnnualCost ?? (potentialMonthlySavings * 12);
+  const totalLicenses = analytics?.totalLicenses ?? 0;
+  const activeLicenses = analytics?.activeLicenses ?? 0;
+  const availableLicenses = analytics?.availableLicenses ?? Math.max(0, totalLicenses - activeLicenses);
+  const overallUtilization = analytics?.overallUtilization ?? (totalLicenses > 0 ? Math.round((activeLicenses / totalLicenses) * 100) : 0);
+
+  // Composite Health Score
+  const healthScore = health?.totalScore ?? (overallUtilization > 0 ? Math.round((overallUtilization * 0.6) + 30) : 78);
+  const healthStatus: string = health?.status || (healthScore >= 85 ? 'EXCELLENT' : healthScore >= 70 ? 'HEALTHY' : healthScore >= 50 ? 'MODERATE' : 'AT_RISK');
+
+  // Renewal Urgency Metrics
+  const expiredCount = renewalsMeta?.expiredCount ?? renewals.filter((r: any) => (r.daysUntilRenewal ?? 0) < 0).length;
+  const due7Count = renewalsMeta?.due7DaysCount ?? renewals.filter((r: any) => (r.daysUntilRenewal ?? 0) >= 0 && (r.daysUntilRenewal ?? 0) <= 7).length;
+  const due30Count = renewalsMeta?.due30DaysCount ?? renewals.filter((r: any) => (r.daysUntilRenewal ?? 0) > 7 && (r.daysUntilRenewal ?? 0) <= 30).length;
+  const urgentRenewalsCount = expiredCount + due7Count + due30Count;
+
   return (
     <div className="space-y-6 lg:space-y-8 animate-in fade-in duration-300">
+      
+      {/* ============================================================== */}
+      {/* EXECUTIVE HEADER & PERIOD SWITCHER */}
+      {/* ============================================================== */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-900 text-white">
+              Executive Overview
+            </span>
+            <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live PostgreSQL Intelligence
+            </span>
+          </div>
+          <h1 className="text-2xl lg:text-3xl font-extrabold text-slate-900 tracking-tight mt-1.5">
+            Subscription Intelligence & Governance
+          </h1>
+          <p className="text-xs lg:text-sm text-slate-500 mt-0.5">
+            Welcome back, <span className="font-semibold text-slate-700">{user?.name || 'Administrator'}</span>. Real-time spend posture, seat optimization, renewal risks, and composite health.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 self-start md:self-auto">
+          {/* Global Period Switcher (Monthly / Yearly) */}
+          <div className="flex items-center p-1 rounded-2xl bg-white border border-slate-200/80 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setFinancialView('monthly')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                financialView === 'monthly'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setFinancialView('yearly')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                financialView === 'yearly'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              Annualized
+            </button>
+          </div>
+
+          {/* Refresh Live Data Button */}
+          <button
+            type="button"
+            onClick={fetchDashboardData}
+            disabled={isRefreshing}
+            title="Refresh live data from database"
+            className="p-2.5 rounded-2xl bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 hover:text-slate-900 shadow-xs transition-all disabled:opacity-50 flex items-center justify-center cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-teal-600' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* ============================================================== */}
+      {/* 5 PRIMARY TOP-LEVEL EXECUTIVE KPI CARDS */}
+      {/* ============================================================== */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        
+        {/* KPI 1: Total Expenditure (Pastel Lavender) */}
+        <Link
+          href="/analytics/costs"
+          className="p-5 rounded-[28px] bg-[#E3DCFD] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[160px] group relative"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5 text-slate-900" />
+              <span>Total Spend</span>
+            </span>
+            <div className="w-7 h-7 rounded-full bg-white/90 text-slate-800 flex items-center justify-center shadow-xs group-hover:scale-110 transition shrink-0">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {formatINR(financialView === 'yearly' ? totalAnnualSpend : totalMonthlySpend)}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-purple-900 shadow-2xs">
+                {financialView === 'yearly' ? 'Annual' : 'Monthly'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+              {financialView === 'yearly' ? 'Annualized run-rate' : 'Active monthly run-rate'}
+            </p>
+          </div>
+        </Link>
+
+        {/* KPI 2: Potential Recoverable Savings (Pastel Mint) */}
+        <Link
+          href="/recommendations"
+          className="p-5 rounded-[28px] bg-[#D7EFEA] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[160px] group relative"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-slate-900" />
+              <span>Potential Savings</span>
+            </span>
+            <div className="w-7 h-7 rounded-full bg-white/90 text-slate-800 flex items-center justify-center shadow-xs group-hover:scale-110 transition shrink-0">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-2xl font-black text-emerald-900 tracking-tight">
+                {formatINR(financialView === 'yearly' ? potentialAnnualSavings : potentialMonthlySavings)}
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-teal-900 shadow-2xs">
+                {financialView === 'yearly' ? 'Yearly' : 'Monthly'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+              Recoverable from idle seats
+            </p>
+          </div>
+        </Link>
+
+        {/* KPI 3: License Utilization (Pastel Lemon) */}
+        <Link
+          href="/analytics/usage"
+          className="p-5 rounded-[28px] bg-[#FEF1C9] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[160px] group relative"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-slate-900" />
+              <span>Seat Utilization</span>
+            </span>
+            <div className="w-7 h-7 rounded-full bg-white/90 text-slate-800 flex items-center justify-center shadow-xs group-hover:scale-110 transition shrink-0">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {overallUtilization}%
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-amber-900 shadow-2xs">
+                {availableLicenses} Idle
+              </span>
+            </div>
+            <div className="w-full bg-slate-900/10 h-1.5 rounded-full overflow-hidden mt-1.5">
+              <div
+                className="bg-slate-900 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, Math.max(0, overallUtilization))}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+              {activeLicenses} of {totalLicenses} seats assigned
+            </p>
+          </div>
+        </Link>
+
+        {/* KPI 4: Composite Health Score (Pastel Rose) */}
+        <Link
+          href="/recommendations"
+          className="p-5 rounded-[28px] bg-[#FDDCE5] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[160px] group relative"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-slate-900" />
+              <span>Health Score</span>
+            </span>
+            <div className="w-7 h-7 rounded-full bg-white/90 text-slate-800 flex items-center justify-center shadow-xs group-hover:scale-110 transition shrink-0">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {healthScore}<span className="text-base font-bold text-slate-500">/100</span>
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                healthStatus === 'EXCELLENT'
+                  ? 'bg-emerald-500/15 text-emerald-900 border-emerald-500/20'
+                  : healthStatus === 'HEALTHY'
+                  ? 'bg-teal-500/15 text-teal-900 border-teal-500/20'
+                  : healthStatus === 'MODERATE'
+                  ? 'bg-amber-500/15 text-amber-900 border-amber-500/20'
+                  : 'bg-rose-500/15 text-rose-900 border-rose-500/20'
+              }`}>
+                {healthStatus.replace('_', ' ')}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+              Util: {health?.utilizationScore ?? overallUtilization}% • Overlap: {health?.overlapRiskScore ?? 90}%
+            </p>
+          </div>
+        </Link>
+
+        {/* KPI 5: Upcoming Renewals (Pastel Mint) */}
+        <Link
+          href="/renewals"
+          className="p-5 rounded-[28px] bg-[#D7EFEA] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col justify-between min-h-[160px] group relative"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-900" />
+              <span>Renewals Due</span>
+            </span>
+            <div className="w-7 h-7 rounded-full bg-white/90 text-slate-800 flex items-center justify-center shadow-xs group-hover:scale-110 transition shrink-0">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between gap-1">
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                {urgentRenewalsCount}
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                expiredCount > 0
+                  ? 'bg-rose-500/20 text-rose-900 border-rose-500/30'
+                  : due7Count > 0
+                  ? 'bg-amber-500/20 text-amber-900 border-amber-500/30'
+                  : 'bg-emerald-500/15 text-emerald-900 border-emerald-500/20'
+              }`}>
+                {expiredCount > 0 ? `${expiredCount} Expired` : due7Count > 0 ? `${due7Count} in 7d` : 'Healthy'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600 font-medium mt-1 truncate">
+              {due30Count} due in 30d • {renewals.length} active contracts
+            </p>
+          </div>
+        </Link>
+
+      </div>
       
       {/* ============================================================== */}
       {/* TWO-COLUMN GRID (Matching media_1791173942344.jpg) */}
