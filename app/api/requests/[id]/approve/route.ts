@@ -178,6 +178,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 reallocatedToUserName: request.user.name,
               },
               ipAddress: '127.0.0.1',
+              createdAt: new Date(Date.now() - 2000),
             },
           });
 
@@ -220,6 +221,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                 requestId: request.id,
               },
               ipAddress: '127.0.0.1',
+              createdAt: new Date(Date.now() - 1000),
             },
           });
 
@@ -415,6 +417,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             reclaimedFrom: reclaimedUser ? reclaimedUser.name : null,
           },
           ipAddress: '127.0.0.1',
+          createdAt: new Date(),
         },
       });
 
