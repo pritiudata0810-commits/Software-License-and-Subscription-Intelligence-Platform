@@ -15,8 +15,10 @@ import {
   X,
   RefreshCw,
   TrendingUp,
-  UserCheck
+  UserCheck,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToCsv } from '@/lib/exportCsv';
 
 export default function LicensesPage() {
   const { user } = useAuth();
@@ -110,6 +112,46 @@ export default function LicensesPage() {
   const formatINR = (val: number) => `₹${Math.round(val || 0).toLocaleString('en-IN')}`;
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
+  const handleExportCSV = () => {
+    if (!filteredLicenses || filteredLicenses.length === 0) return;
+
+    const headers = [
+      'Software Name',
+      'Vendor',
+      'License Type',
+      'Consumption Model',
+      'Total Quota',
+      'Active Seats',
+      'Available Seats',
+      'Unit Cost (₹)',
+      'Billing Frequency',
+      'Renewal Date',
+      'Contract Status',
+      'Notes',
+    ];
+
+    const rows = filteredLicenses.map((lic: any) => {
+      const activeCount = lic.assignments?.length ?? 0;
+      const available = Math.max(0, (lic.totalQuantity ?? 0) - activeCount);
+      return [
+        lic.software?.name || 'N/A',
+        lic.vendor?.name || lic.software?.vendor?.name || 'N/A',
+        lic.licenseType,
+        lic.consumptionType,
+        lic.totalQuantity ?? 0,
+        activeCount,
+        available,
+        lic.costPerLicense ?? 0,
+        lic.billingFrequency,
+        lic.renewalDate ? new Date(lic.renewalDate).toISOString().split('T')[0] : 'N/A',
+        lic.status,
+        lic.notes || '',
+      ];
+    });
+
+    exportToCsv(`License_Inventory_Export_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -128,6 +170,13 @@ export default function LicensesPage() {
           >
             <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
             <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Export CSV</span>
           </button>
           {canManage && (
             <button

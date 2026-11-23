@@ -1,21 +1,32 @@
 import prisma from './prisma';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 
-export async function recordAuditLog(params: {
+export interface AuditLogParams {
   userId?: string | null;
+  actorId?: string | null;
   action: AuditAction;
-  entity: string;
-  entityId?: string;
+  entity?: string;
+  entityType?: string;
+  entityId?: string | null;
   details?: Record<string, any>;
   ipAddress?: string;
-}) {
+}
+
+export async function recordAuditLog(
+  params: AuditLogParams,
+  tx?: Prisma.TransactionClient | typeof prisma
+) {
   try {
-    return await prisma.auditLog.create({
+    const client = tx || prisma;
+    const actorId = params.actorId || params.userId || null;
+    const entityType = params.entity || params.entityType || 'General';
+
+    return await client.auditLog.create({
       data: {
-        userId: params.userId,
+        userId: actorId,
         action: params.action,
-        entity: params.entity,
-        entityId: params.entityId,
+        entity: entityType,
+        entityId: params.entityId || null,
         details: params.details || {},
         ipAddress: params.ipAddress || '127.0.0.1',
       },

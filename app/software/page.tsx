@@ -16,8 +16,10 @@ import {
   X,
   RefreshCw,
   TrendingUp,
-  DollarSign
+  DollarSign,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToCsv } from '@/lib/exportCsv';
 
 export default function SoftwarePage() {
   const { user } = useAuth();
@@ -148,6 +150,42 @@ export default function SoftwarePage() {
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
+  const handleExportCSV = () => {
+    if (!softwareList || softwareList.length === 0) return;
+
+    const headers = [
+      'Software Name',
+      'Vendor',
+      'Category',
+      'Consumption Model',
+      'Total Seats / Quota',
+      'Active Seats',
+      'Available Seats',
+      'Utilization (%)',
+      'Monthly Cost (₹)',
+      'Idle Waste Monthly (₹)',
+      'Annual Spend (₹)',
+      'Status',
+    ];
+
+    const rows = softwareList.map((sw: any) => [
+      sw.name,
+      sw.vendor?.name || 'N/A',
+      sw.category,
+      sw.consumptionType,
+      sw.totalLicenses ?? 0,
+      sw.activeLicenses ?? 0,
+      sw.availableLicenses ?? 0,
+      `${sw.utilizationRate ?? 0}%`,
+      sw.monthlyCost ?? 0,
+      sw.unusedMonthlyCost ?? 0,
+      sw.annualCost ?? (sw.monthlyCost ? sw.monthlyCost * 12 : 0),
+      sw.status,
+    ]);
+
+    exportToCsv(`Software_Catalog_Export_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -166,6 +204,13 @@ export default function SoftwarePage() {
           >
             <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
             <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Export CSV</span>
           </button>
           {canManage && (
             <button

@@ -11,8 +11,10 @@ import {
   Shield,
   RefreshCw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToCsv } from '@/lib/exportCsv';
 
 export default function AuditLogsPage() {
   const { user } = useAuth();
@@ -53,6 +55,36 @@ export default function AuditLogsPage() {
     return actor.toLowerCase().includes(q) || action.toLowerCase().includes(q) || entity.toLowerCase().includes(q);
   });
 
+  const handleExportCSV = () => {
+    if (!filteredLogs || filteredLogs.length === 0) return;
+
+    const headers = [
+      'Timestamp',
+      'Actor Name',
+      'Actor Email',
+      'Actor Role',
+      'Action',
+      'Entity Affected',
+      'Entity ID',
+      'IP Address',
+      'Transaction Details',
+    ];
+
+    const rows = filteredLogs.map((log: any) => [
+      new Date(log.createdAt).toISOString(),
+      log.user?.name || 'System Process',
+      log.user?.email || 'N/A',
+      log.user?.role || 'SYSTEM',
+      log.action,
+      log.entity,
+      log.entityId || 'N/A',
+      log.ipAddress || '127.0.0.1',
+      JSON.stringify(log.details || {}),
+    ]);
+
+    exportToCsv(`Audit_Logs_Governance_Export_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
@@ -64,13 +96,22 @@ export default function AuditLogsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => fetchLogs(page)}
-          className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition self-start"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2 self-start">
+          <button
+            onClick={() => fetchLogs(page)}
+            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+          >
+            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+            <span>Refresh</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -123,10 +164,10 @@ export default function AuditLogsPage() {
                     <td className="py-3 px-4">
                       <span
                         className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                          log.action.includes('ASSIGN') || log.action.includes('APPROVE')
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : log.action.includes('DELETE') || log.action.includes('REJECT')
+                          log.action === 'REVOKE_LICENSE' || log.action.includes('DELETE') || log.action.includes('REJECT')
                             ? 'bg-rose-100 text-rose-700'
+                            : log.action.includes('ASSIGN') || log.action.includes('APPROVE')
+                            ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-blue-100 text-blue-700'
                         }`}
                       >

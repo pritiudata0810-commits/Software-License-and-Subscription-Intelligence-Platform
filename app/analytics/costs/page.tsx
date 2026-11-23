@@ -9,8 +9,10 @@ import {
   Briefcase,
   RefreshCw,
   Info,
-  Calendar
+  Calendar,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportToCsv } from '@/lib/exportCsv';
 import {
   ResponsiveContainer,
   BarChart,
@@ -211,6 +213,59 @@ export default function CostAnalysisPage() {
             title="Refresh Financial Data"
           >
             <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+          </button>
+
+          <button
+            onClick={() => {
+              const dateStr = new Date().toISOString().split('T')[0];
+              if (activeTab === 'yearly') {
+                const headers = [
+                  'Fiscal Year',
+                  'Capital Investment (₹)',
+                  'Realized Value (₹)',
+                  'Unrecovered Cost (₹)',
+                  'Recovery Rate (%)',
+                  'Verified Realized Savings (₹)',
+                  'Potential Annual Savings (₹)',
+                  'Data Status',
+                ];
+                const rows = (yearlyData?.years || []).map((y: any) => [
+                  `FY ${y.year}`,
+                  y.totalInvestment ?? 0,
+                  y.realizedValue ?? 0,
+                  y.unrecoveredCost ?? 0,
+                  y.recoveryPercentage ?? 0,
+                  y.verifiedRealizedSavings ?? 0,
+                  y.potentialAnnualSavings ?? y.unrecoveredCost ?? 0,
+                  y.dataCompleteness || 'Audited',
+                ]);
+                exportToCsv(`Cost_Analytics_Yearly_Recovery_${dateStr}`, headers, rows);
+              } else {
+                const headers = [
+                  'Software Name',
+                  'Category',
+                  'Monthly Spend (₹)',
+                  'Utilized Spend (₹)',
+                  'Idle Waste (₹)',
+                  'Annual Spend (₹)',
+                  'Potential Annual Savings (₹)',
+                ];
+                const rows = softwareBreakdown.map((s: any) => [
+                  s.softwareName,
+                  s.category,
+                  s.monthlyCost ?? 0,
+                  (s.monthlyCost ?? 0) - (s.unusedMonthlyCost ?? 0),
+                  s.unusedMonthlyCost ?? 0,
+                  s.annualCost ?? (s.monthlyCost ? s.monthlyCost * 12 : 0),
+                  s.potentialAnnualSaving ?? 0,
+                ]);
+                exportToCsv(`Cost_Analytics_Monthly_Spend_${dateStr}`, headers, rows);
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Export CSV</span>
           </button>
         </div>
       </div>

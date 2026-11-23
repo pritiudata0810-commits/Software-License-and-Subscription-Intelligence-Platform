@@ -10,6 +10,8 @@ import {
   RefreshCw,
   Info,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Cpu,
   Zap,
   Coins,
@@ -22,8 +24,12 @@ import {
   Search,
   UserCheck,
   UserX,
-  UserMinus
+  UserMinus,
+  FileSpreadsheet,
+  Plus,
+  X
 } from 'lucide-react';
+import { exportToCsv } from '@/lib/exportCsv';
 import {
   ResponsiveContainer,
   BarChart,
@@ -48,6 +54,30 @@ export default function UsageAnalyticsPage() {
   const [threshold, setThreshold] = useState(70);
   const [seatFilter, setSeatFilter] = useState<'ALL' | 'OPTIMAL' | 'UNDERUTILIZED' | 'IDLE_60D' | 'UNASSIGNED'>('ALL');
   const [seatSearch, setSeatSearch] = useState('');
+
+  // Telemetry Activity Ledger State (Phase 4)
+  const [telemetryLogs, setTelemetryLogs] = useState<any[]>([]);
+  const [telemetryTotal, setTelemetryTotal] = useState(0);
+  const [telemetryPage, setTelemetryPage] = useState(1);
+  const [telemetryTotalPages, setTelemetryTotalPages] = useState(1);
+  const [telemetryLoading, setTelemetryLoading] = useState(false);
+  const [telemetryTierFilter, setTelemetryTierFilter] = useState<'ALL' | 'OPTIMAL' | 'UNDERUTILIZED' | 'IDLE_60D'>('ALL');
+  const [telemetrySearch, setTelemetrySearch] = useState('');
+  const [telemetryCollapsed, setTelemetryCollapsed] = useState(false);
+
+  // Quick Test Telemetry Modal State
+  const [showLogModal, setShowLogModal] = useState(false);
+  const [logFormData, setLogFormData] = useState({
+    userEmail: '',
+    softwareName: '',
+    hoursUsed: 2.5,
+    loginCount: 1,
+    lastActiveDate: new Date().toISOString().split('T')[0],
+    actionNote: 'User telemetry session logged via Admin Activity Ledger',
+  });
+  const [logSubmitting, setLogSubmitting] = useState(false);
+  const [logError, setLogError] = useState('');
+  const [logSuccess, setLogSuccess] = useState('');
 
   const fetchAnalytics = async () => {
     setLoading(true);
@@ -75,10 +105,143 @@ export default function UsageAnalyticsPage() {
     }
   };
 
+  const fetchTelemetryLogs = async (pageNum = 1) => {
+    setTelemetryLoading(true);
+    try {
+      const url = new URL('/api/usage-logs', window.location.origin);
+      url.searchParams.set('page', pageNum.toString());
+      url.searchParams.set('limit', '25');
+      if (telemetryTierFilter !== 'ALL') url.searchParams.set('tier', telemetryTierFilter);
+      if (telemetrySearch.trim()) url.searchParams.set('search', telemetrySearch.trim());
+
+      const res = await fetch(url.toString());
+      const data = await res.json();
+      if (data.success) {
+        setTelemetryLogs(data.logs || []);
+        setTelemetryTotal(data.total || 0);
+        setTelemetryPage(data.page || 1);
+        setTelemetryTotalPages(data.totalPages || 1);
+      }
+    } catch (err) {
+      console.error('Error fetching telemetry logs:', err);
+    } finally {
+      setTelemetryLoading(false);
+    }
+  };
+
+  const handleQuickLogTelemetry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLogError('');
+    setLogSuccess('');
+    setLogSubmitting(true);
+
+    try {
+      const res = await fetch('/api/usage-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(logFormData),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLogSuccess(data.message || 'Telemetry event logged successfully.');
+        setShowLogModal(false);
+        fetchTelemetryLogs(1);
+        fetchAnalytics(); // Refresh classification metrics as well
+      } else {
+        setLogError(data.error || 'Failed to record telemetry.');
+      }
+    } catch (err: any) {
+      setLogError(err.message || 'Error communicating with telemetry API.');
+    } finally {
+      setLogSubmitting(false);
+    }
+  };
+
+  const handleExportTelemetryCSV = () => {
+    if (!telemetryLogs || telemetryLogs.length === 0) return;
+
+    const headers = [
+      'Timestamp (Last Active)',
+      'Employee Name',
+      'Employee Email',
+      'Role',
+      'Department',
+      'Software Name',
+      'Category',
+      'Hours Used',
+      'Login Count',
+      'Days Inactive',
+      'Classification Tier',
+      'Recorded At',
+    ];
+
+    const rows = telemetryLogs.map((l: any) => [
+      l.lastActiveDate,
+      l.userName,
+      l.userEmail,
+      l.userRole,
+      l.departmentName,
+      l.softwareName,
+      l.softwareCategory,
+      l.hoursUsed,
+      l.loginCount,
+      l.daysInactive,
+      l.classificationLabel,
+      l.recordedAt,
+    ]);
+
+    exportToCsv(`Telemetry_Activity_Ledger_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
+  const handleExportSeatClassificationCSV = () => {
+    if (!filteredSeats || filteredSeats.length === 0) return;
+
+    const headers = [
+      'Seat ID',
+      'Employee Name',
+      'Employee Email',
+      'Department',
+      'Software Name',
+      'Unit Cost (₹)',
+      'Billing Frequency',
+      'Last Active Date',
+      'Days Inactive',
+      'Hours Used',
+      'Login Count',
+      '4-Tier Classification',
+      'Reclaimable Monthly Cost (₹)',
+      'Reclaimable Annual Cost (₹)',
+    ];
+
+    const rows = filteredSeats.map((s: any) => [
+      s.seatId,
+      s.userName,
+      s.userEmail,
+      s.departmentName,
+      s.softwareName,
+      s.costPerLicense,
+      s.billingFrequency,
+      s.lastActiveDate || 'N/A',
+      s.daysInactive,
+      s.hoursUsed,
+      s.loginCount,
+      s.tier,
+      s.reclaimableCostMonthly,
+      s.reclaimableCostAnnual,
+    ]);
+
+    exportToCsv(`4Tier_Seat_Classification_Export_${new Date().toISOString().split('T')[0]}`, headers, rows);
+  };
+
   useEffect(() => {
     fetchAnalytics();
     fetchConsumption(selectedYear);
+    fetchTelemetryLogs(1);
   }, []);
+
+  useEffect(() => {
+    fetchTelemetryLogs(1);
+  }, [telemetryTierFilter]);
 
   const handleYearChange = (yr: number) => {
     setSelectedYear(yr);
@@ -575,6 +738,15 @@ export default function UsageAnalyticsPage() {
                   <span className={`w-1.5 h-1.5 rounded-full ${seatFilter === 'UNASSIGNED' ? 'bg-white' : 'bg-purple-500'}`} />
                   Unassigned ({seatSummary.unassignedSeats})
                 </button>
+                <button
+                  type="button"
+                  onClick={handleExportSeatClassificationCSV}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition flex items-center gap-1 shadow-2xs ml-1"
+                  title="Export 4-Tier Seat Classification to CSV"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Export CSV</span>
+                </button>
               </div>
             </div>
           </div>
@@ -745,6 +917,290 @@ export default function UsageAnalyticsPage() {
           </div>
         </div>
 
+      </div>
+
+      {/* ============================================================== */}
+      {/* SECTION: TELEMETRY ACTIVITY LEDGER (usage_logs) (PHASE 4)     */}
+      {/* ============================================================== */}
+      <div id="telemetry-ledger" className="space-y-6 pt-6 border-t border-slate-200/60">
+        {/* Section Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                <Activity className="w-3 h-3" />
+                <span>Real-time Telemetry Ingestion (usage_records)</span>
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider">
+                PostgreSQL Grounded
+              </span>
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight mt-1.5 flex items-center gap-2">
+              <span>Telemetry Activity Logs (<code className="text-sm font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">usage_logs</code>)</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Auditable activity ledger capturing raw employee client telemetry, active sessions, engagement hours, and automated 4-tier classification.
+            </p>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setLogError('');
+                setLogSuccess('');
+                setShowLogModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Test Telemetry Event</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportTelemetryCSV}
+              disabled={telemetryLogs.length === 0}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+              title="Export all telemetry records to RFC 4180 CSV"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Export CSV</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fetchTelemetryLogs(telemetryPage)}
+              className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-2xs"
+              title="Refresh Telemetry Ledger"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${telemetryLoading ? 'animate-spin' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTelemetryCollapsed(!telemetryCollapsed)}
+              className="p-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-2xs"
+              title={telemetryCollapsed ? 'Expand Ledger' : 'Collapse Ledger'}
+            >
+              {telemetryCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {!telemetryCollapsed && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+            {/* Filter & Search Bar */}
+            <div className="p-4 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/50">
+              <div className="relative w-full md:w-80">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search employee, email, software..."
+                  value={telemetrySearch}
+                  onChange={(e) => setTelemetrySearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') fetchTelemetryLogs(1);
+                  }}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition placeholder:text-slate-400"
+                />
+              </div>
+
+              {/* 4-Tier Filter Badges */}
+              <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
+                <span className="text-slate-400 text-[11px] mr-1 hidden sm:inline">Tier:</span>
+                <button
+                  type="button"
+                  onClick={() => setTelemetryTierFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg transition ${
+                    telemetryTierFilter === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
+                  }`}
+                >
+                  All ({telemetryTotal})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTelemetryTierFilter('OPTIMAL')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+                    telemetryTierFilter === 'OPTIMAL'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'bg-white text-emerald-700 hover:bg-emerald-50 border border-slate-200/80'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${telemetryTierFilter === 'OPTIMAL' ? 'bg-white' : 'bg-emerald-500'}`} />
+                  Optimal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTelemetryTierFilter('UNDERUTILIZED')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+                    telemetryTierFilter === 'UNDERUTILIZED'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'bg-white text-amber-700 hover:bg-amber-50 border border-slate-200/80'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${telemetryTierFilter === 'UNDERUTILIZED' ? 'bg-white' : 'bg-amber-500'}`} />
+                  Underutilized
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTelemetryTierFilter('IDLE_60D')}
+                  className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
+                    telemetryTierFilter === 'IDLE_60D'
+                      ? 'bg-rose-600 text-white shadow-2xs'
+                      : 'bg-white text-rose-700 hover:bg-rose-50 border border-slate-200/80'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${telemetryTierFilter === 'IDLE_60D' ? 'bg-white' : 'bg-rose-500'}`} />
+                  Idle (&gt;60d)
+                </button>
+              </div>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto max-h-[440px] overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-100 sticky top-0 z-10 shadow-2xs">
+                  <tr>
+                    <th className="py-3 px-4">Last Active Timestamp</th>
+                    <th className="py-3 px-4">Employee</th>
+                    <th className="py-3 px-4">Software Application</th>
+                    <th className="py-3 px-4">Engagement (Hours / Logins)</th>
+                    <th className="py-3 px-4">Days Inactive</th>
+                    <th className="py-3 px-4">4-Tier Classification</th>
+                    <th className="py-3 px-4">Ingested At</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {telemetryLoading ? (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-slate-400">
+                        <div className="flex items-center justify-center gap-2">
+                          <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                          <span>Loading telemetry records...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : telemetryLogs.length > 0 ? (
+                    telemetryLogs.map((log: any) => {
+                      const isIdle60 = log.classificationTier === 'IDLE_60D';
+                      const isUnder = log.classificationTier === 'UNDERUTILIZED';
+                      const isOpt = log.classificationTier === 'OPTIMAL';
+
+                      return (
+                        <tr key={log.id} className="hover:bg-slate-50/70 transition">
+                          <td className="py-3 px-4 font-mono text-[11px] text-slate-600">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{log.lastActiveDate ? new Date(log.lastActiveDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never'}</span>
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-slate-900">{log.userName || 'Unknown'}</div>
+                            <div className="text-[11px] text-slate-400 flex items-center gap-1">
+                              <span>{log.userEmail}</span>
+                              {log.departmentName && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-slate-500 font-medium">{log.departmentName}</span>
+                                </>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <div className="font-semibold text-slate-800">{log.softwareName}</div>
+                            {log.softwareCategory && (
+                              <div className="text-[10px] text-slate-400">{log.softwareCategory}</div>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <span className="font-bold text-slate-900">{log.hoursUsed} hrs</span>
+                            <span className="text-[11px] text-slate-400 ml-1.5">({log.loginCount} logins)</span>
+                          </td>
+
+                          <td className="py-3 px-4">
+                            {isIdle60 ? (
+                              <span className="inline-flex items-center gap-1 font-bold text-rose-700 bg-rose-100/70 px-2 py-0.5 rounded-full text-[10px]">
+                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                {log.daysInactive}d inactive (&gt;60d)
+                              </span>
+                            ) : isUnder ? (
+                              <span className="font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full text-[10px]">
+                                {log.daysInactive}d inactive
+                              </span>
+                            ) : (
+                              <span className="font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px]">
+                                {log.daysInactive}d inactive
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                                isOpt
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  : isUnder
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : isIdle60
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300 font-black'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {log.classificationLabel || log.classificationTier}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-4 text-slate-400 text-[11px] font-mono">
+                            {log.recordedAt ? new Date(log.recordedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-slate-400 text-xs">
+                        No telemetry logs found. Click &quot;Log Test Telemetry Event&quot; to ingest test usage data.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {telemetryTotalPages > 1 && (
+              <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50/50">
+                <span>
+                  Showing page <span className="font-bold text-slate-900">{telemetryPage}</span> of <span className="font-bold text-slate-900">{telemetryTotalPages}</span> ({telemetryTotal} total logs)
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={telemetryPage <= 1}
+                    onClick={() => fetchTelemetryLogs(telemetryPage - 1)}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition font-semibold"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={telemetryPage >= telemetryTotalPages}
+                    onClick={() => fetchTelemetryLogs(telemetryPage + 1)}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 transition font-semibold"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ============================================================== */}
@@ -1111,6 +1567,155 @@ export default function UsageAnalyticsPage() {
         })}
 
       </div>
+
+      {/* Quick Test Telemetry Modal (Phase 4 Demo / Admin Tool) */}
+      {showLogModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                  <Activity className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Log Test Telemetry Event</h3>
+                  <p className="text-[11px] text-slate-500">Ingest employee client telemetry into <code className="font-mono">usage_records</code></p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLogModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickLogTelemetry} className="p-5 space-y-4">
+              {logError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{logError}</span>
+                </div>
+              )}
+              {logSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{logSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Employee Email <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. employee@company.com"
+                  value={logFormData.userEmail}
+                  onChange={(e) => setLogFormData({ ...logFormData, userEmail: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Software Tool Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Figma Enterprise, Slack, Zoom"
+                  value={logFormData.softwareName}
+                  onChange={(e) => setLogFormData({ ...logFormData, softwareName: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Hours Used <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    required
+                    value={logFormData.hoursUsed}
+                    onChange={(e) => setLogFormData({ ...logFormData, hoursUsed: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Login Count <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={logFormData.loginCount}
+                    onChange={(e) => setLogFormData({ ...logFormData, loginCount: parseInt(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Activity Timestamp (Last Active Date) <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={logFormData.lastActiveDate}
+                  onChange={(e) => setLogFormData({ ...logFormData, lastActiveDate: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Action Note / Reason
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Simulated active telemetry session"
+                  value={logFormData.actionNote}
+                  onChange={(e) => setLogFormData({ ...logFormData, actionNote: e.target.value })}
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowLogModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={logSubmitting}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shadow-xs"
+                >
+                  {logSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Ingesting Telemetry...</span>
+                    </>
+                  ) : (
+                    <span>Record Telemetry Event</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
