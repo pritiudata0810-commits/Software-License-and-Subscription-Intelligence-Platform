@@ -27,7 +27,8 @@ import {
   ChevronLeft,
   Sparkles,
   Menu,
-  X
+  X,
+  Copy
 } from 'lucide-react';
 
 interface NavItem {
@@ -54,6 +55,7 @@ export default function Sidebar() {
     { label: 'Departments', href: '/departments', icon: Briefcase, roles: ['ADMIN', 'MANAGER'] },
     { label: 'Usage Analytics', href: '/analytics/usage', icon: TrendingUp },
     { label: 'Cost Analysis', href: '/analytics/costs', icon: DollarSign },
+    { label: 'Duplicate Detection', href: '/analytics/duplicates', icon: Copy, roles: ['ADMIN', 'MANAGER'] },
     { label: 'Renewals', href: '/renewals', icon: CalendarClock },
     { label: 'Risk Alerts', href: '/risk-alerts', icon: AlertTriangle },
     { label: 'Recommendations', href: '/recommendations', icon: Lightbulb },

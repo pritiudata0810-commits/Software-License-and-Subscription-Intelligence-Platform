@@ -246,6 +246,14 @@ async function main() {
       website: 'https://canva.com',
       notes: 'Marketing template and social graphics design tool.',
     },
+    {
+      name: 'Asana Inc.',
+      contactPerson: 'Dustin Moskovitz',
+      email: 'enterprise@asana.com',
+      phone: '+1-415-525-3688',
+      website: 'https://asana.com',
+      notes: 'Work management and cross-departmental project collaboration suite.',
+    },
   ];
 
   const vendors: Record<string, any> = {};
@@ -383,6 +391,36 @@ async function main() {
         billingFrequency: BillingFrequency.MONTHLY,
         renewalDate: next90Days,
         assignedCount: 28,
+      }
+    },
+    {
+      name: 'Microsoft Teams Enterprise',
+      vendorName: 'Microsoft Corporation',
+      category: 'Team Collaboration', // Duplicate category with Slack Business+!
+      version: '2026 Enterprise',
+      description: 'Enterprise workplace team chat, video channels, meetings, and document hub.',
+      website: 'https://microsoft.com/teams',
+      license: {
+        totalQuantity: 60,
+        costPerLicense: 450,
+        billingFrequency: BillingFrequency.MONTHLY,
+        renewalDate: next90Days,
+        assignedCount: 26,
+      }
+    },
+    {
+      name: 'Asana Enterprise',
+      vendorName: 'Asana Inc.',
+      category: 'Project Management', // Duplicate category with Jira Software Enterprise!
+      version: 'Enterprise Tier',
+      description: 'Cross-functional team workflow tracking, project roadmaps, and agile boards.',
+      website: 'https://asana.com',
+      license: {
+        totalQuantity: 35,
+        costPerLicense: 650,
+        billingFrequency: BillingFrequency.MONTHLY,
+        renewalDate: next90Days,
+        assignedCount: 18,
       }
     },
   ];
